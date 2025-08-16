@@ -258,5 +258,4 @@ Access the service health dashboard in the frontend to monitor:
 4. Update documentation
 5. Submit pull requests
 
-This architecture serves as a blueprint for building scalable, maintainable microservices applications with modern technologies and best practices.#   m i c r o s e r v i c e s - e - c o m m e r c e - s t a c k  
- 
+This architecture serves as a blueprint for building scalable, maintainable microservices applications with modern technologies and best practices.#
