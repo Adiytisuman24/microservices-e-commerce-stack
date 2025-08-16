@@ -1,0 +1,178 @@
+version: '3.8'
+
+services:
+  # API Gateway
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--log.level=DEBUG"
+    ports:
+      - "80:80"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - ecommerce
+
+  # Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`localhost`) && PathPrefix(`/`)"
+      - "traefik.http.routers.frontend.priority=1"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost
+    networks:
+      - ecommerce
+    depends_on:
+      - user-service
+      - product-service
+      - search-service
+
+  # User Service (Node.js)
+  user-service:
+    build:
+      context: ./services/user-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.user.rule=Host(`localhost`) && PathPrefix(`/api/users`)"
+      - "traefik.http.routers.user.priority=100"
+      - "traefik.http.services.user.loadbalancer.server.port=3001"
+    environment:
+      - JWT_SECRET=your-secret-key-here
+      - NODE_ENV=development
+    networks:
+      - ecommerce
+
+  # Product Catalog Service (Go)
+  product-service:
+    build:
+      context: ./services/product-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.product.rule=Host(`localhost`) && PathPrefix(`/api/products`)"
+      - "traefik.http.routers.product.priority=100"
+      - "traefik.http.services.product.loadbalancer.server.port=8001"
+    environment:
+      - SEARCH_SERVICE_URL=http://search-service:8005
+    networks:
+      - ecommerce
+    depends_on:
+      - search-service
+
+  # Search & Optimization Service (Python)
+  search-service:
+    build:
+      context: ./services/search-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.search.rule=Host(`localhost`) && PathPrefix(`/api/search`)"
+      - "traefik.http.routers.search.priority=100"
+      - "traefik.http.services.search.loadbalancer.server.port=8005"
+    networks:
+      - ecommerce
+
+  # Cart Service (Go)
+  cart-service:
+    build:
+      context: ./services/cart-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cart.rule=Host(`localhost`) && PathPrefix(`/api/cart`)"
+      - "traefik.http.routers.cart.priority=100"
+      - "traefik.http.services.cart.loadbalancer.server.port=8002"
+    environment:
+      - INVENTORY_SERVICE_URL=http://inventory-service:8004
+    networks:
+      - ecommerce
+    depends_on:
+      - inventory-service
+
+  # Inventory Service (Go)
+  inventory-service:
+    build:
+      context: ./services/inventory-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.inventory.rule=Host(`localhost`) && PathPrefix(`/api/inventory`)"
+      - "traefik.http.routers.inventory.priority=100"
+      - "traefik.http.services.inventory.loadbalancer.server.port=8004"
+    networks:
+      - ecommerce
+
+  # Order Service (Go)
+  order-service:
+    build:
+      context: ./services/order-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.order.rule=Host(`localhost`) && PathPrefix(`/api/orders`)"
+      - "traefik.http.routers.order.priority=100"
+      - "traefik.http.services.order.loadbalancer.server.port=8003"
+    environment:
+      - PAYMENT_SERVICE_URL=http://payment-service:3002
+      - INVENTORY_SERVICE_URL=http://inventory-service:8004
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8006
+    networks:
+      - ecommerce
+    depends_on:
+      - payment-service
+      - inventory-service
+      - notification-service
+
+  # Payment Service (Node.js)
+  payment-service:
+    build:
+      context: ./services/payment-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.payment.rule=Host(`localhost`) && PathPrefix(`/api/payments`)"
+      - "traefik.http.routers.payment.priority=100"
+      - "traefik.http.services.payment.loadbalancer.server.port=3002"
+    environment:
+      - STRIPE_SECRET_KEY=sk_test_mock_key
+    networks:
+      - ecommerce
+
+  # Notification Service (Python)
+  notification-service:
+    build:
+      context: ./services/notification-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.notification.rule=Host(`localhost`) && PathPrefix(`/api/notifications`)"
+      - "traefik.http.routers.notification.priority=100"
+      - "traefik.http.services.notification.loadbalancer.server.port=8006"
+    environment:
+      - SENDGRID_API_KEY=mock_key
+      - TWILIO_SID=mock_sid
+    networks:
+      - ecommerce
+
+  # Redis (for caching and session storage)
+  redis:
+    image: redis:7-alpine
+    networks:
+      - ecommerce
+
+  # Prometheus (monitoring)
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - ecommerce
+
+networks:
+  ecommerce:
+    driver: bridge
